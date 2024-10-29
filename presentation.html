@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <title>הצגת מצגת</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: transparent;
+            min-height: 100vh;
+        }
+        
+        .presentation-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .slide-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .slide-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: rgba(255, 255, 255, 0.5);
+        }
+        
+        .slide-item.highlighted {
+            background-color: #ff0000;
+            transform: scale(1.02);
+        }
+        
+        .slide-image {
+            width: 120px;
+            height: 120px;
+            flex-shrink: 0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .slide-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .slide-title {
+            flex-grow: 1;
+        }
+        
+        .slide-item h2 {
+            margin: 0;
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            font-size: 1.2em;
+        }
+
+        .highlighted h2 {
+            color: white !important;
+        }
+
+        .navigation-buttons {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .nav-button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s ease;
+        }
+        
+        .nav-button:hover {
+            background: #1976D2;
+        }
+        
+        .nav-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 50px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        @media (max-width: 600px) {
+            .slide-item {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .slide-image {
+                width: 100%;
+                height: 160px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation-container">
+        <ul class="slide-list" id="slide-list"></ul>
+        <div class="navigation-buttons">
+            <button class="nav-button" onclick="previousSlide()">הכותרת הקודמת</button>
+            <button class="nav-button" onclick="nextSlide()">הכותרת הבאה</button>
+        </div>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        let slides = [];
+        let titleElements;
+
+        function loadSlideshow() {
+            const slideList = document.getElementById('slide-list');
+            const data = localStorage.getItem('slideshowData');
+            
+            if (!data) {
+                slideList.innerHTML = '<div class="no-data">לא נמצאה מצגת. אנא צור מצגת חדשה בדף הראשי.</div>';
+                return;
+            }
+            
+            slides = JSON.parse(data);
+            
+            slides.forEach((slide, index) => {
+                const listItem = document.createElement('li');
+                listItem.className = 'slide-item';
+                listItem.innerHTML = `
+                    <div class="slide-image">
+                        <img src="${slide.image}" alt="${slide.title}">
+                    </div>
+                    <div class="slide-title">
+                        <h2>${slide.title}</h2>
+                    </div>
+                `;
+                slideList.appendChild(listItem);
+            });
+            
+            titleElements = slideList.querySelectorAll('.slide-item');
+            highlightTitle(0);
+            updateNavigationButtons();
+        }
+
+        function highlightTitle(index) {
+            titleElements.forEach(item => {
+                item.classList.remove('highlighted');
+            });
+            
+            if (titleElements[index]) {
+                titleElements[index].classList.add('highlighted');
+            }
+        }
+        
+        function updateNavigationButtons() {
+            const prevButton = document.querySelector('.nav-button:first-child');
+            const nextButton = document.querySelector('.nav-button:last-child');
+            
+            if (prevButton && nextButton) {
+                prevButton.disabled = currentSlide === 0;
+                nextButton.disabled = currentSlide === slides.length - 1;
+            }
+        }
+
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                currentSlide++;
+                highlightTitle(currentSlide);
+                updateNavigationButtons();
+            }
+        }
+
+        function previousSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                highlightTitle(currentSlide);
+                updateNavigationButtons();
+            }
+        }
+
+        // טעינת המצגת בעת טעינת הדף
+        loadSlideshow();
+    </script>
+</body>
+</html>
