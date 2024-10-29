@@ -2,7 +2,7 @@
 <html dir="rtl" lang="he">
 <head>
     <meta charset="UTF-8">
-    <title>הצגת מצגת</title>
+    <title>מצגת עם שידור RTMP</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -69,20 +69,37 @@
             color: white !important;
         }
 
-        .navigation-buttons {
+        .controls-container {
             position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
+            left: 20px;
+            top: 20px;
             display: flex;
+            flex-direction: column;
             gap: 10px;
-            padding: 15px;
             background: rgba(255, 255, 255, 0.9);
+            padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+
+        .navigation-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        .rtmp-url {
+            width: 300px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 5px;
         }
         
-        .nav-button {
+        .nav-button, .stream-button {
             background: #2196F3;
             color: white;
             border: none;
@@ -102,12 +119,26 @@
             cursor: not-allowed;
         }
 
+        .stream-button {
+            background: #dc3545;
+        }
+
+        .stream-button.active {
+            background: #28a745;
+        }
+
         .no-data {
             text-align: center;
             padding: 50px;
-            background: white;
+            background: rgba(255, 255, 255, 0.9);
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #streamCanvas {
+            display: none;
+            position: absolute;
+            pointer-events: none;
         }
 
         @media (max-width: 600px) {
@@ -120,26 +151,51 @@
                 width: 100%;
                 height: 160px;
             }
+
+            .controls-container {
+                left: 50%;
+                transform: translateX(-50%);
+                width: 90%;
+                max-width: 300px;
+            }
+
+            .rtmp-url {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="presentation-container">
-        <ul class="slide-list" id="slide-list"></ul>
+    <div class="controls-container">
+        <input type="text" class="rtmp-url" id="rtmpUrl" placeholder="הכנס כתובת RTMP">
+        <button class="stream-button" id="streamButton" onclick="toggleStream()">התחל שידור</button>
         <div class="navigation-buttons">
             <button class="nav-button" onclick="previousSlide()">הכותרת הקודמת</button>
             <button class="nav-button" onclick="nextSlide()">הכותרת הבאה</button>
         </div>
     </div>
 
+    <div class="presentation-container">
+        <ul class="slide-list" id="slide-list"></ul>
+    </div>
+
+    <canvas id="streamCanvas"></canvas>
+
     <script>
         let currentSlide = 0;
         let slides = [];
         let titleElements;
+        let isStreaming = false;
+        let mediaRecorder;
 
         function loadSlideshow() {
             const slideList = document.getElementById('slide-list');
             const data = localStorage.getItem('slideshowData');
+            const rtmpUrl = localStorage.getItem('rtmpUrl');
+            
+            if (rtmpUrl) {
+                document.getElementById('rtmpUrl').value = rtmpUrl;
+            }
             
             if (!data) {
                 slideList.innerHTML = '<div class="no-data">לא נמצאה מצגת. אנא צור מצגת חדשה בדף הראשי.</div>';
@@ -183,7 +239,7 @@
             
             if (prevButton && nextButton) {
                 prevButton.disabled = currentSlide === 0;
-                nextButton.disabled = currentSlide === slides.length - 1;
+                nextButton.disabled = currentSlide === titleElements.length - 1;
             }
         }
 
@@ -203,8 +259,116 @@
             }
         }
 
+        async function setupStream() {
+            const canvas = document.getElementById('streamCanvas');
+            const ctx = canvas.getContext('2d');
+            const presentationContainer = document.querySelector('.presentation-container');
+            
+            canvas.width = presentationContainer.offsetWidth;
+            canvas.height = presentationContainer.offsetHeight;
+
+            const stream = canvas.captureStream(30);
+            const options = {
+                mimeType: 'video/webm;codecs=vp8',
+                videoBitsPerSecond: 2500000
+            };
+
+            mediaRecorder = new MediaRecorder(stream, options);
+
+            mediaRecorder.ondataavailable = async (event) => {
+                if (event.data.size > 0) {
+                    try {
+                        await sendToRtmpServer(event.data);
+                    } catch (error) {
+                        console.error('שגיאה בשליחת הנתונים:', error);
+                        stopStream();
+                    }
+                }
+            };
+
+            function updateCanvas() {
+                if (isStreaming) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(presentationContainer, 0, 0);
+                    requestAnimationFrame(updateCanvas);
+                }
+            }
+
+            return updateCanvas;
+        }
+
+        async function sendToRtmpServer(data) {
+            const rtmpUrl = document.getElementById('rtmpUrl').value;
+            if (!rtmpUrl) {
+                alert('אנא הכנס כתובת RTMP תקינה');
+                stopStream();
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('video', data, 'stream.webm');
+
+            try {
+                const response = await fetch(rtmpUrl, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('שגיאה בשליחת הנתונים לשרת');
+                }
+            } catch (error) {
+                console.error('שגיאה בשידור:', error);
+                stopStream();
+                alert('שגיאה בשידור. אנא בדוק את כתובת ה-RTMP ונסה שוב.');
+            }
+        }
+
+        function toggleStream() {
+            const streamButton = document.getElementById('streamButton');
+            
+            if (!isStreaming) {
+                startStream();
+                streamButton.textContent = 'עצור שידור';
+                streamButton.classList.add('active');
+            } else {
+                stopStream();
+                streamButton.textContent = 'התחל שידור';
+                streamButton.classList.remove('active');
+            }
+        }
+
+        async function startStream() {
+            try {
+                isStreaming = true;
+                const updateCanvas = await setupStream();
+                mediaRecorder.start(1000);
+                updateCanvas();
+            } catch (error) {
+                console.error('שגיאה באתחול השידור:', error);
+                stopStream();
+                alert('שגיאה באתחול השידור. אנא נסה שוב.');
+            }
+        }
+
+        function stopStream() {
+            isStreaming = false;
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        }
+
         // טעינת המצגת בעת טעינת הדף
         loadSlideshow();
+
+        // מקשי מקלדת לניווט
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') {
+                previousSlide();
+            } else if (e.key === 'ArrowLeft') {
+                nextSlide();
+            }
+        });
     </script>
 </body>
 </html>
